@@ -1,10 +1,9 @@
-from typing import Any, List
+from typing import List
 from fastapi import FastAPI, status, HTTPException
 from sqlmodel import desc
 from . import schemas
 from . import models
 from .database import engine, DBSession
-from .db_driver import Cursor
 
 models.Base.metadata.create_all(bind=engine)
 
