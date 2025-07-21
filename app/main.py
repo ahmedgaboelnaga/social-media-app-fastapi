@@ -1,7 +1,8 @@
-from typing import Any
+from typing import Any, List
 from fastapi import FastAPI, status, HTTPException
-from pydantic import BaseModel
-from . import models # I don't know what is the difference between both because .models in fact imoprt Base from .database
+from sqlmodel import desc
+from . import schemas
+from . import models
 from .database import engine, DBSession
 from .db_driver import Cursor
 
@@ -9,85 +10,73 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-class Post(BaseModel):
-    title: str
-    content: str
-    published: bool = True
-    # rating: Optional[int] = None # This helps us to give it None if we don't have an integer instead of passing a default int like zero or True for bool
-    # rating: int | None = None
-    rating: int | None = None
-
 
 @app.get("/")
 async def root() -> dict[str, str]:
     return {"message": "Welcome to my API"}
 
 
-@app.get("/sqlalchemy")
-async def test(db: DBSession):
-    posts = db.query(models.Post).all()
-    if not posts:
+@app.get("/posts", response_model=List[schemas.PostResponse])
+async def get_posts(db: DBSession) -> List[models.Post]:
+    posts: List[models.Post] = db.query(models.Post).all()
+    if not posts:   
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Posts Found!")
-    return {"data": posts}
+    return posts
 
 
-@app.get("/posts")
-async def get_posts(cur: Cursor) -> dict[str, Any]:
-    cur.execute("SELECT * FROM posts;")
-    posts: list[dict[str, Any]] = cur.fetchall()
-    if not posts:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No posts found")
-    return {"data": posts}
-
-
-@app.get("/posts/latest")
-async def get_latest_post(cur: Cursor) -> dict[str, Any]:
-    cur.execute("SELECT * FROM posts ORDER BY created_at DESC LIMIT 1;")
-    post: dict[str, Any] = cur.fetchone()
+@app.get("/posts/latest", response_model=schemas.PostResponse)
+async def get_latest_post(db: DBSession) -> models.Post:
+    post_query = db.query(models.Post).order_by(desc(models.Post.created_at))
+    post: models.Post | None = post_query.first()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="There are no posts yet.")
-    return {"data": post}
+    return post
 
 
-@app.get("/posts/{post_id}")
-async def get_post(post_id: int, cur: Cursor) -> dict[str, Any]:
-    cur.execute("SELECT * FROM posts WHERE id = %s;",
-                (post_id,))
-    post: dict[str, Any] = cur.fetchone()
+@app.get("/posts/{post_id}", response_model=schemas.PostResponse)
+async def get_post(post_id: int, db: DBSession) -> models.Post:
+    post: models.Post | None = db.query(models.Post).filter_by(id=post_id).first()
     if not post:
         #     # response.status_code = status.HTTP_404_NOT_FOUND
         #     # return {"message": f"Post with id: {id} was not found!"}
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Post with id: {post_id} was not found")
-    return {"data": post}
+    return post
 
 
-@app.post("/posts", status_code=status.HTTP_201_CREATED)
-async def create_post(post: Post, cur: Cursor) -> dict[str, Any]:
-    cur.execute("INSERT INTO posts (title, content, published, rating) VALUES (%s, %s, %s, %s) RETURNING *;",
-                (post.title, post.content, post.published, post.rating))
-    new_post: dict[str, Any] = cur.fetchone()
-    if not new_post:
-        raise HTTPException(status_code=500, detail="Failed to create post")
-    return {"data": new_post}
+@app.post("/posts", status_code=status.HTTP_201_CREATED, response_model=schemas.PostResponse)
+async def create_post(post: schemas.PostCreate, db: DBSession) -> models.Post:
+    new_post: models.Post = models.Post(**post.model_dump())
+    try:
+        db.add(new_post)
+        db.commit()
+        db.refresh(new_post)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    return new_post
 
 
 @app.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_post(post_id: int, cur: Cursor) -> None:
-    cur.execute("DELETE FROM posts WHERE id = %s RETURNING *;",
-                (post_id,))
-    deleted_post:dict[str, Any] = cur.fetchone()
-    if not deleted_post:
+async def delete_post(post_id: int, db: DBSession) -> None:
+    post_query = db.query(models.Post).filter_by(id=post_id)
+    post: models.Post | None = post_query.first()
+    if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"The post with id: {post_id} wasn't found.")
+    post_query.delete(synchronize_session=False)
+    db.commit()
     return
 
 
-@app.put("/posts/{post_id}")
-async def update_post(post_id: int, post: Post, cur: Cursor) -> dict[str, Any]:
-    cur.execute(
-        "UPDATE posts SET title = %s, content = %s, published = %s, rating = %s WHERE id = %s RETURNING *;",
-        (post.title, post.content, post.published, post.rating, post_id)
-    )
-    updated_post: dict[str, Any] = cur.fetchone()
-    if not updated_post:
+@app.put("/posts/{post_id}", response_model=schemas.PostResponse)
+async def update_post(post_id: int, updated_post: schemas.PostCreate, db: DBSession) -> models.Post:
+    post_query = db.query(models.Post).filter_by(id=post_id)
+    post: models.Post | None = post_query.first()
+    if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"The post with id: {post_id} wasn't found.")
-    return {"data": updated_post}
+    try:
+        post_query.update(updated_post.model_dump(), synchronize_session=False)
+        db.commit()
+        db.refresh(post)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Databaase Error {e}")
+    return post
