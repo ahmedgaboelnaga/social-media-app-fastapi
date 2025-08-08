@@ -3,13 +3,14 @@ from typing import Annotated, Any
 
 # import jwt
 from fastapi import Depends, HTTPException, status
-from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
-
+from jose import JWTError, jwt
 # from jwt.exceptions import InvalidTokenError
-from . import utils, models, schemas
-from .database import SessionDep
-from .config import settings
+
+from app.core import SessionDep, settings
+from app.utils import get_user
+from app.models import User
+from app.schemas import TokenData
 
 
 SECRET_KEY = settings.secret_key
@@ -33,7 +34,7 @@ def create_access_token(
     return encoded_jwt
 
 
-async def get_current_user(token: BearerToken, db: SessionDep) -> models.User:
+async def get_current_user(token: BearerToken, db: SessionDep) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -44,18 +45,18 @@ async def get_current_user(token: BearerToken, db: SessionDep) -> models.User:
         username = payload.get("sub")
         if not username:
             raise credentials_exception
-        token_data = schemas.TokenData(username=username)
+        token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    user: models.User | None = utils.get_user(db, token_data.username)
+    user: User | None = get_user(db, token_data.username)
     if not user:
         raise credentials_exception
     return user
 
 
 async def get_current_active_user(
-    current_user: Annotated[models.User, Depends(get_current_user)],
-) -> models.User:
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive User"

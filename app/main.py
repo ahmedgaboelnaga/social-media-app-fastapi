@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from . import models
+
 from .routers import auth, post, user
+from .core import create_tables
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    models.create_tables()
+    create_tables()
     yield
 
 

@@ -1,23 +1,27 @@
 from typing import Annotated, List
+
 from fastapi import HTTPException, status, APIRouter, Depends
-from .. import schemas, models, oauth2
-from ..database import SessionDep
 from sqlalchemy import desc
+
+from app.core import SessionDep, get_current_active_user
+from app.models import User, Post
+from app.schemas import PostCreate, PostResponse
+
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
 
-@router.get("", response_model=List[schemas.PostResponse])
+@router.get("", response_model=List[PostResponse])
 async def get_posts(
     db: SessionDep,
-    current_user: Annotated[models.User, Depends(oauth2.get_current_active_user)],
+    current_user: Annotated[User, Depends(get_current_active_user)],
     limit: int = 10,
     skip: int = 0,
     search: str | None = "",
-) -> List[models.Post]:
-    posts: List[models.Post] = (
-        db.query(models.Post)
-        .filter(models.Post.title.contains(search))
+) -> List[Post]:
+    posts: List[Post] = (
+        db.query(Post)
+        .filter(Post.title.contains(search))
         .limit(limit)
         .offset(skip)
         .all()
@@ -25,21 +29,21 @@ async def get_posts(
     return posts
 
 
-@router.get("/me", response_model=List[schemas.PostResponse])
+@router.get("/me", response_model=List[PostResponse])
 async def get_my_posts(
     db: SessionDep,
-    current_user: Annotated[models.User, Depends(oauth2.get_current_active_user)],
-) -> List[models.Post]:
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> List[Post]:
     return current_user.posts
 
 
-@router.get("/latest", response_model=schemas.PostResponse)
+@router.get("/latest", response_model=PostResponse)
 async def get_latest_post(
     db: SessionDep,
-    current_user: Annotated[models.User, Depends(oauth2.get_current_active_user)],
-) -> models.Post:
-    post_query = db.query(models.Post).order_by(desc(models.Post.created_at))
-    post: models.Post | None = post_query.first()
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> Post:
+    post_query = db.query(Post).order_by(desc(Post.created_at))
+    post: Post | None = post_query.first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="There are no posts yet."
@@ -47,13 +51,13 @@ async def get_latest_post(
     return post
 
 
-@router.get("/{post_id}", response_model=schemas.PostResponse)
+@router.get("/{post_id}", response_model=PostResponse)
 async def get_post(
     post_id: int,
     db: SessionDep,
-    current_user: Annotated[models.User, Depends(oauth2.get_current_active_user)],
-) -> models.Post:
-    post: models.Post | None = db.query(models.Post).filter_by(id=post_id).first()
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> Post:
+    post: Post | None = db.query(Post).filter_by(id=post_id).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -62,15 +66,13 @@ async def get_post(
     return post
 
 
-@router.post(
-    "", status_code=status.HTTP_201_CREATED, response_model=schemas.PostResponse
-)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=PostResponse)
 async def create_post(
-    post: schemas.PostCreate,
+    post: PostCreate,
     db: SessionDep,
-    current_user: Annotated[models.User, Depends(oauth2.get_current_active_user)],
-) -> models.Post:
-    new_post: models.Post = models.Post(**post.model_dump(), owner_id=current_user.id)
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> Post:
+    new_post: Post = Post(**post.model_dump(), owner_id=current_user.id)
     try:
         db.add(new_post)
         db.commit()
@@ -85,10 +87,10 @@ async def create_post(
 async def delete_post(
     post_id: int,
     db: SessionDep,
-    current_user: Annotated[models.User, Depends(oauth2.get_current_active_user)],
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> None:
-    post_query = db.query(models.Post).filter_by(id=post_id)
-    post: models.Post | None = post_query.first()
+    post_query = db.query(Post).filter_by(id=post_id)
+    post: Post | None = post_query.first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -104,15 +106,15 @@ async def delete_post(
     return
 
 
-@router.put("/{post_id}", response_model=schemas.PostResponse)
+@router.put("/{post_id}", response_model=PostResponse)
 async def update_post(
     post_id: int,
-    updated_post: schemas.PostCreate,
+    updated_post: PostCreate,
     db: SessionDep,
-    current_user: Annotated[models.User, Depends(oauth2.get_current_active_user)],
-) -> models.Post:
-    post_query = db.query(models.Post).filter_by(id=post_id)
-    post: models.Post | None = post_query.first()
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> Post:
+    post_query = db.query(Post).filter_by(id=post_id)
+    post: Post | None = post_query.first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

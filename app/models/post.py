@@ -1,6 +1,7 @@
 from sqlalchemy import TIMESTAMP, Column, ForeignKey, Integer, String, Boolean, text
 from sqlalchemy.orm import relationship
-from .database import Base, engine
+
+from app.core import Base
 
 
 class Post(Base):
@@ -21,20 +22,3 @@ class Post(Base):
     )
 
     owner = relationship("User", back_populates="posts")
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True)
-    email = Column(String, nullable=False, unique=True)
-    password = Column(String, nullable=False)
-    created_at = Column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
-    )
-
-    posts = relationship("Post", back_populates="owner")
-
-
-def create_tables():
-    Base.metadata.create_all(bind=engine)
