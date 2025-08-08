@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status, APIRouter, Depends
 from typing import Annotated
 from .. import schemas, models, utils
-from ..database import DBSession
+from ..database import SessionDep
 from ..oauth2 import get_current_active_user
 
 
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/users", tags=["Users"])
 @router.post(
     "", status_code=status.HTTP_201_CREATED, response_model=schemas.UserResponse
 )
-async def create_user(user: schemas.UserCreate, db: DBSession) -> models.User:
+async def create_user(user: schemas.UserCreate, db: SessionDep) -> models.User:
     user.password = utils.hash_password(user.password)
     new_user: models.User = models.User(**user.model_dump())
     try:
@@ -35,7 +35,7 @@ async def read_users_me(
 
 
 @router.get("/{user_id}", response_model=schemas.UserResponse)
-async def get_user(user_id: int, db: DBSession) -> models.User:
+async def get_user(user_id: int, db: SessionDep) -> models.User:
     user: models.User | None = (
         db.query(models.User).filter(models.User.id == user_id).first()
     )

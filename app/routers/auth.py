@@ -2,7 +2,7 @@ from datetime import timedelta
 from typing import Annotated
 from fastapi import HTTPException, status, APIRouter, Depends
 from .. import models, utils, schemas, oauth2
-from ..database import DBSession
+from ..database import SessionDep
 from fastapi.security import OAuth2PasswordRequestForm
 
 router = APIRouter(tags=["Authentication"])
@@ -10,7 +10,7 @@ router = APIRouter(tags=["Authentication"])
 
 @router.post("/auth", response_model=schemas.Token)
 async def login(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: DBSession
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: SessionDep
 ) -> schemas.Token:
     user: models.User | None = utils.authenticate_user(
         db, form_data.username, form_data.password

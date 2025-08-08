@@ -8,7 +8,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 # from jwt.exceptions import InvalidTokenError
 from . import utils, models, schemas
-from .database import DBSession
+from .database import SessionDep
 from .config import settings
 
 
@@ -33,7 +33,7 @@ def create_access_token(
     return encoded_jwt
 
 
-async def get_current_user(token: BearerToken, db: DBSession) -> models.User:
+async def get_current_user(token: BearerToken, db: SessionDep) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
