@@ -1,6 +1,7 @@
 from typing import Annotated, Any
 from fastapi import Depends
 import psycopg
+
 # from psycopg2.extras import RealDictCursor # This is meant for v.2
 from psycopg.rows import dict_row
 
@@ -10,7 +11,7 @@ DB_CONFIG: dict[str, Any] = {
     "host": "localhost",
     "port": 5432,
     "dbname": "fastapi",
-    "row_factory": dict_row
+    "row_factory": dict_row,
 }
 
 

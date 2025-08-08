@@ -1,7 +1,21 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, EmailStr
 
-class PostCreate(BaseModel):
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Post(BaseModel):
     title: str
     content: str
     published: bool = True
@@ -10,9 +24,23 @@ class PostCreate(BaseModel):
     rating: int | None = None
 
 
-class PostResponse(PostCreate):
+class PostCreate(Post):
+    pass
+
+
+class PostResponse(Post):
     id: int
     created_at: datetime
+    owner_id: int
+    owner: UserResponse
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: str
