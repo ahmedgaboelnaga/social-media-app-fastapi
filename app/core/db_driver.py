@@ -25,7 +25,7 @@ def get_connection():
         conn.close()
 
 
-def get_cursor(conn=Depends(get_connection)):
+def get_cursor(conn=Depends(get_connection)):  # type: ignore
     cursor: Any = conn.cursor()
     try:
         print("Yielding Cursor")

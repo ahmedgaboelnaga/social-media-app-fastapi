@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from .routers import auth, post, user
+from .routers import auth, post, user, vote
 from .core import create_tables
 
 
@@ -15,6 +15,7 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(post.router)
 app.include_router(user.router)
 app.include_router(auth.router)
+app.include_router(vote.router)
 
 
 @app.get("/")

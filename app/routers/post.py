@@ -1,27 +1,31 @@
-from typing import Annotated, List
+from typing import Annotated, List, Tuple
 
 from fastapi import HTTPException, status, APIRouter, Depends
-from sqlalchemy import desc
+from sqlalchemy import desc, func
+from sqlalchemy.engine.row import Row
 
 from app.core import SessionDep, get_current_active_user
-from app.models import User, Post
-from app.schemas import PostCreate, PostResponse
+from app.models import User, Post, Vote
+from app.schemas import PostCreate, PostResponse, PostWithVote
 
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
 
-@router.get("", response_model=List[PostResponse])
+@router.get("", response_model=List[PostWithVote])
 async def get_posts(
     db: SessionDep,
     current_user: Annotated[User, Depends(get_current_active_user)],
     limit: int = 10,
     skip: int = 0,
     search: str | None = "",
-) -> List[Post]:
-    posts: List[Post] = (
-        db.query(Post)
+):
+    posts: List[Row[Tuple[Post, int]]] = (
+        db.query(Post, func.count(Vote.type).label("votes"))
+        .outerjoin(Vote, Vote.post_id == Post.id)
         .filter(Post.title.contains(search))
+        .group_by(Post.id)
+        .order_by(desc(Post.created_at))
         .limit(limit)
         .offset(skip)
         .all()
@@ -29,21 +33,36 @@ async def get_posts(
     return posts
 
 
-@router.get("/me", response_model=List[PostResponse])
+@router.get("/me", response_model=List[PostWithVote])
 async def get_my_posts(
     db: SessionDep,
     current_user: Annotated[User, Depends(get_current_active_user)],
-) -> List[Post]:
-    return current_user.posts
+):
+    # return current_user.posts
+    posts = (
+        db.query(Post, func.count(Vote.type).label("votes"))
+        .outerjoin(Vote, Vote.post_id == Post.id)
+        .filter(Post.owner_id == current_user.id)
+        .group_by(Post.id)
+        .order_by(desc(Post.created_at))
+        .all()
+    )
+    return posts
 
 
-@router.get("/latest", response_model=PostResponse)
+@router.get("/latest", response_model=PostWithVote)
 async def get_latest_post(
     db: SessionDep,
     current_user: Annotated[User, Depends(get_current_active_user)],
-) -> Post:
-    post_query = db.query(Post).order_by(desc(Post.created_at))
-    post: Post | None = post_query.first()
+):
+    # post_query = db.query(Post).order_by(desc(Post.created_at))
+    post_query = (
+        db.query(Post, func.count(Vote.type).label("votes"))
+        .outerjoin(Vote, Vote.post_id == Post.id)
+        .group_by(Post.id)
+        .order_by(desc(Post.created_at))
+    )
+    post = post_query.first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="There are no posts yet."
@@ -51,13 +70,19 @@ async def get_latest_post(
     return post
 
 
-@router.get("/{post_id}", response_model=PostResponse)
+@router.get("/{post_id}", response_model=PostWithVote)
 async def get_post(
     post_id: int,
     db: SessionDep,
     current_user: Annotated[User, Depends(get_current_active_user)],
-) -> Post:
-    post: Post | None = db.query(Post).filter_by(id=post_id).first()
+):
+    post = (
+        db.query(Post, func.count(Vote.type).label("votes"))
+        .outerjoin(Vote, Vote.post_id == Post.id)
+        .filter(Post.id == post_id)
+        .group_by(Post.id)
+        .first()
+    )
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -79,7 +104,10 @@ async def create_post(
         db.refresh(new_post)
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}",
+        )
     return new_post
 
 
@@ -101,8 +129,15 @@ async def delete_post(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to delete this post",
         )
-    post_query.delete(synchronize_session=False)
-    db.commit()
+    try:
+        post_query.delete(synchronize_session=False)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database Error {e}",
+        )
     return
 
 
@@ -125,19 +160,16 @@ async def update_post(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this post",
         )
-    # try:
-    #     post_query.update(updated_post.model_dump(), synchronize_session=False)
-    #     db.commit()
-    #     db.refresh(post)
     try:
-        for key, value in updated_post.model_dump().items():
-            setattr(post, key, value)
-        # post_query.update(post, synchronize_session=False)
+        post_query.update(updated_post.model_dump(), synchronize_session=False)  # type: ignore
+        # for key, value in updated_post.model_dump().items():
+        #     setattr(post, key, value)
         db.commit()
         db.refresh(post)
     except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Databaase Error {e}",
+            detail=f"Database Error {e}",
         )
     return post
