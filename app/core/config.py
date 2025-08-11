@@ -5,16 +5,12 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    database_username: str
-    database_password: str
-    database_hostname: str
-    database_port: str = "5432"
-    database_name: str
+    database_url: str
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int = 30
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env.example")
 
 
 @lru_cache
